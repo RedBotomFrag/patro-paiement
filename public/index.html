@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inscription</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f6f7f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    padding: 40px 32px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 8px;
+    color: #1a1a1a;
+  }
+  p.desc {
+    color: #666;
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+  .prix {
+    font-size: 36px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0 0 24px;
+  }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    background: #635bff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover { background: #524bdb; }
+  button:disabled { background: #a8a3f7; cursor: not-allowed; }
+  .erreur {
+    color: #d1242f;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+  .securise {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Inscription</h1>
+    <p class="desc">Finalise ton inscription en réglant les frais ci-dessous.</p>
+    <div class="prix" id="prix">…</div>
+    <button id="bouton-payer">Payer</button>
+    <div class="erreur" id="erreur">Une erreur est survenue. Réessaie dans un instant.</div>
+    <div class="securise">🔒 Paiement sécurisé par Stripe</div>
+  </div>
+
+  <script>
+    const bouton = document.getElementById('bouton-payer');
+    const erreur = document.getElementById('erreur');
+    const prixEl = document.getElementById('prix');
+    const titreEl = document.querySelector('p.desc');
+
+    // Récupère le prix et le nom configurés côté serveur (.env)
+    fetch('/config')
+      .then((r) => r.json())
+      .then((cfg) => {
+        prixEl.textContent = `${cfg.prixEuros.toFixed(2)} €`;
+        if (cfg.nomProduit) {
+          titreEl.textContent = `Finalise ton inscription : ${cfg.nomProduit}`;
+        }
+      })
+      .catch(() => {
+        prixEl.textContent = '—';
+      });
+
+    bouton.addEventListener('click', async () => {
+      bouton.disabled = true;
+      bouton.textContent = 'Redirection…';
+      erreur.style.display = 'none';
+
+      try {
+        // "ref" (optionnel) : identifiant de l'inscription sur le site
+        // Patro, transmis dans l'URL (ex: ?ref=12) pour relier ce paiement
+        // a la bonne inscription une fois confirme par Stripe.
+        const ref = new URLSearchParams(window.location.search).get('ref');
+        const reponse = await fetch('/creer-session-paiement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ref ? { ref } : {}),
+        });
+        const data = await reponse.json();
+
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.error || 'Réponse invalide');
+        }
+      } catch (e) {
+        console.error(e);
+        erreur.style.display = 'block';
+        bouton.disabled = false;
+        bouton.textContent = 'Payer';
+      }
+    });
+  </script>
+</body>
+</html>

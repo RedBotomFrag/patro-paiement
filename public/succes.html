@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paiement confirmé</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f6f7f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    padding: 40px 32px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+  }
+  .icone {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #e7f8ef;
+    color: #16a34a;
+    font-size: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  h1 { font-size: 20px; margin: 0 0 8px; color: #1a1a1a; }
+  p { color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icone">✓</div>
+    <h1>Inscription confirmée</h1>
+    <p>Merci, ton paiement a bien été reçu. Un email de confirmation te sera envoyé.</p>
+  </div>
+
+  <script>
+    // Revérifie le paiement auprès de Stripe et prévient le site Patro
+    // (filet de sécurité local, en plus du webhook — voir server.js).
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (sessionId) {
+      fetch(`/session-status?session_id=${encodeURIComponent(sessionId)}`).catch(() => {});
+    }
+  </script>
+</body>
+</html>

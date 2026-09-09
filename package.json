@@ -1,0 +1,15 @@
+{
+  "name": "inscription-paiement",
+  "version": "1.0.0",
+  "description": "Site d'inscription avec paiement Stripe (Checkout) - l'argent est ensuite viré automatiquement sur le compte bancaire du propriétaire.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "stripe": "^16.12.0"
+  }
+}
