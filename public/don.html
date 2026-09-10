@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faire un don</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f6f7f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    padding: 40px 32px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+  }
+  h1 { font-size: 22px; margin: 0 0 8px; color: #1a1a1a; }
+  p.desc { color: #666; font-size: 14px; margin: 0 0 24px; }
+  .montants { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .montant {
+    padding: 12px 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #635bff;
+    background: #f0efff;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .montant:hover { background: #e3e1ff; }
+  .montant.selected { border-color: #635bff; background: #e3e1ff; }
+  label { display: block; text-align: left; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; }
+  input[type=number] {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-sizing: border-box;
+  }
+  input[type=number]:focus { outline: none; border-color: #635bff; }
+  button#bouton-don {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    background: #635bff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button#bouton-don:hover { background: #524bdb; }
+  button#bouton-don:disabled { background: #a8a3f7; cursor: not-allowed; }
+  .erreur {
+    color: #d1242f;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+  .securise {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Faire un don ❤️</h1>
+    <p class="desc">Chaque don aide le Patro à continuer ses activités pour les jeunes. Merci pour ton soutien !</p>
+
+    <div class="montants">
+      <button type="button" class="montant" data-amount="5">5 €</button>
+      <button type="button" class="montant" data-amount="10">10 €</button>
+      <button type="button" class="montant" data-amount="25">25 €</button>
+      <button type="button" class="montant" data-amount="50">50 €</button>
+    </div>
+
+    <label for="montant-libre">Ou choisis ton propre montant (€)</label>
+    <input type="number" id="montant-libre" min="1" max="5000" step="1" placeholder="Ex : 15">
+
+    <button id="bouton-don">Faire un don</button>
+    <div class="erreur" id="erreur">Une erreur est survenue. Réessaie dans un instant.</div>
+    <div class="securise">🔒 Paiement sécurisé par Stripe</div>
+  </div>
+
+  <script>
+    const boutonsMontant = document.querySelectorAll('.montant');
+    const champLibre = document.getElementById('montant-libre');
+    const bouton = document.getElementById('bouton-don');
+    const erreur = document.getElementById('erreur');
+
+    boutonsMontant.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        boutonsMontant.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        champLibre.value = btn.dataset.amount;
+      });
+    });
+
+    // Choisir un montant libre desactive la selection des boutons preset.
+    champLibre.addEventListener('input', () => {
+      boutonsMontant.forEach((b) => b.classList.remove('selected'));
+    });
+
+    bouton.addEventListener('click', async () => {
+      const montant = parseFloat(champLibre.value);
+      erreur.style.display = 'none';
+
+      if (!Number.isFinite(montant) || montant < 1) {
+        erreur.textContent = 'Merci de choisir ou saisir un montant valide (1 € minimum).';
+        erreur.style.display = 'block';
+        return;
+      }
+
+      bouton.disabled = true;
+      bouton.textContent = 'Redirection…';
+
+      try {
+        const reponse = await fetch('/creer-session-don', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: montant }),
+        });
+        const data = await reponse.json();
+
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.error || 'Réponse invalide');
+        }
+      } catch (e) {
+        console.error(e);
+        erreur.textContent = 'Une erreur est survenue. Réessaie dans un instant.';
+        erreur.style.display = 'block';
+        bouton.disabled = false;
+        bouton.textContent = 'Faire un don';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -193,6 +193,44 @@ app.post('/creer-session-paiement', async (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
+// Cree une session de paiement Stripe Checkout pour un DON (montant libre
+// choisi par la personne, independant du prix d'inscription configure).
+// ----------------------------------------------------------------------------
+app.post('/creer-session-don', async (req, res) => {
+  try {
+    const amountEur = parseFloat(req.body?.amount);
+    if (!Number.isFinite(amountEur) || amountEur < 1 || amountEur > 5000) {
+      return res.status(400).json({ error: 'Montant invalide (entre 1 et 5000 euros).' });
+    }
+    const amountCents = Math.round(amountEur * 100);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: 'Don au Patro',
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${domain}/don-succes.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${domain}/annulation.html`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Erreur création session don Stripe :', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------------------------------
 // Filet de securite pour le developpement local (sans Stripe CLI) : la page
 // succes.html appelle cette route avec le session_id recu de Stripe apres
 // paiement. On revérifie DIRECTEMENT aupres de Stripe (jamais en faisant
