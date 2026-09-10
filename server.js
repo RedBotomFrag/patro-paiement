@@ -38,7 +38,14 @@ if (!STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
-const stripe = Stripe(STRIPE_SECRET_KEY);
+// maxNetworkRetries/timeout plus genereux : sur un hebergeur "free tier"
+// (ex: Render), la connexion reseau sortante d'une instance qui vient de
+// se reveiller peut mettre quelques secondes a se stabiliser. Sans ca, le
+// tout premier appel a l'API Stripe apres un reveil peut echouer.
+const stripe = Stripe(STRIPE_SECRET_KEY, {
+  maxNetworkRetries: 3,
+  timeout: 20000,
+});
 const app = express();
 
 const port = PORT || 4242;
