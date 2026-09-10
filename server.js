@@ -38,13 +38,15 @@ if (!STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
-// maxNetworkRetries/timeout plus genereux : sur un hebergeur "free tier"
-// (ex: Render), la connexion reseau sortante d'une instance qui vient de
-// se reveiller peut mettre quelques secondes a se stabiliser. Sans ca, le
-// tout premier appel a l'API Stripe apres un reveil peut echouer.
+// Sur certains hebergeurs (ex: Render), le client HTTP par defaut de la
+// librairie Stripe (base sur fetch/HTTP2) echoue systematiquement a se
+// connecter ("StripeConnectionError" sans cause precise), meme apres
+// plusieurs tentatives. On force donc le client HTTP "classique" (module
+// Node natif https), plus compatible avec ce genre d'environnement.
 const stripe = Stripe(STRIPE_SECRET_KEY, {
   maxNetworkRetries: 3,
   timeout: 20000,
+  httpClient: Stripe.createNodeHttpClient(),
 });
 const app = express();
 
