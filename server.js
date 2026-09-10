@@ -145,32 +145,6 @@ app.post(
 app.use(express.json());
 app.use(express.static('public'));
 
-// Route de diagnostic TEMPORAIRE : teste une connexion reseau brute vers
-// l'API Stripe (sans passer par la librairie Stripe), pour determiner si
-// le probleme est reseau (DNS, pare-feu) ou specifique a la librairie.
-// A supprimer une fois le probleme resolu.
-app.get('/diag', async (req, res) => {
-  const dns = require('dns').promises;
-  const result = {};
-  try {
-    result.dns = await dns.lookup('api.stripe.com', { all: true });
-  } catch (e) {
-    result.dnsError = e.message;
-  }
-  try {
-    const start = Date.now();
-    const r = await fetch('https://api.stripe.com/v1/charges', {
-      headers: { Authorization: 'Bearer ' + STRIPE_SECRET_KEY },
-      signal: AbortSignal.timeout(10000),
-    });
-    result.fetchStatus = r.status;
-    result.fetchMs = Date.now() - start;
-  } catch (e) {
-    result.fetchError = { message: e.message, cause: e.cause?.message || e.cause?.code, name: e.name };
-  }
-  res.json(result);
-});
-
 // Petite route pour que la page HTML affiche le bon prix et le bon nom
 // sans avoir à les recopier en dur dans le HTML.
 app.get('/config', (req, res) => {
