@@ -185,6 +185,7 @@ app.post('/creer-session-paiement', async (req, res) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error('Erreur création session Stripe :', err.message);
+    console.error('   type:', err.type, '| code:', err.code, '| cause:', err.cause?.code || err.cause?.message);
     res.status(500).json({ error: err.message });
   }
 });
