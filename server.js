@@ -40,22 +40,26 @@ if (!STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
-// NOTE (diagnostic effectue le 23/09) : le client HTTP "classique" de
-// Stripe (Stripe.createNodeHttpClient(), base sur le module Node natif
-// https, avec une liste de ciphers TLS restreinte codee en dur dans le
-// SDK) echoue systematiquement sur Render avec "StripeConnectionError"
-// sans cause precise - meme en forcant IPv4. Un test direct avec le
-// fetch() natif de Node (route /diag-network) a prouve que la
-// connectivite sortante vers api.stripe.com fonctionne parfaitement
-// depuis cette meme instance (reponse en ~400ms) : le probleme vient donc
-// specifiquement du client "classique" (tres probablement sa liste de
-// ciphers TLS, incompatible avec l'environnement Render), pas du reseau.
-// On utilise donc le client HTTP par defaut du SDK (base sur fetch), qui
-// est demontrablement fonctionnel ici - ne pas le remplacer par
-// createNodeHttpClient() sans revalider via /diag-network au prealable.
+// NOTE (diagnostic effectue le 23/09) : sur Node, le client HTTP "par
+// defaut" du SDK Stripe (Stripe.createDefaultHttpClient(), utilise quand
+// aucun "httpClient" n'est precise) EST en realite exactement le meme
+// client "classique" que Stripe.createNodeHttpClient() - tous deux
+// s'appuient sur le module Node natif https, avec une liste de ciphers
+// TLS restreinte codee en dur dans le SDK. Ce client echoue
+// systematiquement sur Render avec "StripeConnectionError" sans cause
+// precise (meme en forcant IPv4). Un test direct avec le fetch() natif de
+// Node (route /diag-network, retiree une fois le diagnostic termine) a
+// prouve que la connectivite sortante vers api.stripe.com fonctionne
+// parfaitement depuis cette meme instance (reponse en ~400ms) : le
+// probleme vient donc specifiquement de ce client "classique" (tres
+// probablement sa liste de ciphers TLS, incompatible avec l'environnement
+// Render), pas du reseau. On utilise donc explicitement le client basé sur
+// fetch() fourni par le SDK (Stripe.createFetchHttpClient()), qui est
+// demontrablement fonctionnel ici.
 const stripe = Stripe(STRIPE_SECRET_KEY, {
   maxNetworkRetries: 3,
   timeout: 20000,
+  httpClient: Stripe.createFetchHttpClient(),
 });
 const app = express();
 
