@@ -43,16 +43,34 @@
 <body>
   <div class="card">
     <div class="icone">✓</div>
-    <h1>Inscription confirmée</h1>
-    <p>Merci, ton paiement a bien été reçu. Un email de confirmation te sera envoyé.</p>
+    <h1>Paiement confirmé</h1>
+    <p>Redirection vers le site du Patro...</p>
   </div>
 
   <script>
-    // Revérifie le paiement auprès de Stripe et prévient le site Patro
-    // (filet de sécurité local, en plus du webhook — voir server.js).
+    // Reverifie le paiement aupres de Stripe et previent le site Patro
+    // (filet de securite local, en plus du webhook - voir server.js), PUIS
+    // renvoie directement vers le site Patro (PHP) pour afficher la
+    // confirmation finale, au lieu de rester sur ce serveur de paiement.
     const sessionId = new URLSearchParams(window.location.search).get('session_id');
+
+    function redirectToPatroSite() {
+      fetch('/config')
+        .then((r) => r.json())
+        .then((cfg) => {
+          if (cfg && cfg.patroSiteUrl) {
+            window.location.href = cfg.patroSiteUrl.replace(/\/$/, '') + '/paiement-confirme.php';
+          }
+        })
+        .catch(() => {});
+    }
+
     if (sessionId) {
-      fetch(`/session-status?session_id=${encodeURIComponent(sessionId)}`).catch(() => {});
+      fetch(`/session-status?session_id=${encodeURIComponent(sessionId)}`)
+        .catch(() => {})
+        .then(redirectToPatroSite);
+    } else {
+      redirectToPatroSite();
     }
   </script>
 </body>

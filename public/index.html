@@ -83,8 +83,15 @@
     const prixEl = document.getElementById('prix');
     const titreEl = document.querySelector('p.desc');
 
-    // Récupère le prix et le nom configurés côté serveur (.env)
-    fetch('/config')
+    // "ref" (optionnel) : identifiant de l'inscription sur le site Patro,
+    // transmis dans l'URL (ex: ?ref=12 ou ?ref=camp-12) pour relier ce
+    // paiement a la bonne inscription une fois confirme par Stripe, et pour
+    // determiner le bon tarif (voir /config et /creer-session-paiement).
+    const ref = new URLSearchParams(window.location.search).get('ref');
+
+    // Récupère le prix et le nom configurés côté site Patro (modifiables
+    // par un admin) pour ce type de paiement.
+    fetch('/config' + (ref ? `?ref=${encodeURIComponent(ref)}` : ''))
       .then((r) => r.json())
       .then((cfg) => {
         prixEl.textContent = `${cfg.prixEuros.toFixed(2)} €`;
@@ -102,10 +109,6 @@
       erreur.style.display = 'none';
 
       try {
-        // "ref" (optionnel) : identifiant de l'inscription sur le site
-        // Patro, transmis dans l'URL (ex: ?ref=12) pour relier ce paiement
-        // a la bonne inscription une fois confirme par Stripe.
-        const ref = new URLSearchParams(window.location.search).get('ref');
         const reponse = await fetch('/creer-session-paiement', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

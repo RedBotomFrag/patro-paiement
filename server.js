@@ -17,7 +17,10 @@
 // ============================================================================
 
 require('dotenv').config();
+const https = require('https');
 const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const Stripe = require('stripe');
 
 const {
@@ -43,17 +46,125 @@ if (!STRIPE_SECRET_KEY) {
 // connecter ("StripeConnectionError" sans cause precise), meme apres
 // plusieurs tentatives. On force donc le client HTTP "classique" (module
 // Node natif https), plus compatible avec ce genre d'environnement.
+// Meme avec ce client "classique", certains hebergeurs (dont Render, en
+// tout cas sur certaines instances/regions) resolvent api.stripe.com en
+// IPv6 par defaut, alors que leur sortie reseau IPv6 est cassee ou trop
+// lente : la connexion tente IPv6, echoue en silence, puis abandonne sans
+// jamais retomber correctement sur IPv4, ce qui remonte comme
+// "StripeConnectionError" sans cause precise. On force donc explicitement
+// l'IPv4 sur l'agent HTTPS utilise par Stripe pour contourner ce cas.
 const stripe = Stripe(STRIPE_SECRET_KEY, {
   maxNetworkRetries: 3,
   timeout: 20000,
   httpClient: Stripe.createNodeHttpClient(),
+  httpAgent: new https.Agent({ family: 4, keepAlive: true }),
 });
 const app = express();
+
+// Necessaire derriere un reverse proxy (Render, etc.) pour que req.ip
+// reflete la vraie IP du visiteur (sinon tout le monde seme confondu avec
+// l'IP du proxy, ce qui casse le rate-limiting ci-dessous).
+app.set('trust proxy', 1);
+
+// En-tetes de securite HTTP (gratuit, via le paquet "helmet"). Le
+// Content-Security-Policy par defaut de helmet bloquerait le <script> et le
+// <style> inline de public/index.html : on autorise donc explicitement
+// 'unsafe-inline' pour script/style plutot que de tout reecrire avec des
+// nonces, tout en gardant les protections utiles (pas d'iframe externe, pas
+// de <object>, pas de changement de <base>, formulaires vers ce site
+// uniquement).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        frameAncestors: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  })
+);
+
+// Limite generale (anti-abus/anti-DoS basique) sur toutes les routes, assez
+// large pour ne jamais gener un visiteur normal.
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// Limite plus stricte specifiquement sur la creation de sessions de
+// paiement/don (evite qu'un script puisse spammer la creation de sessions
+// Stripe, qui a un cout et pourrait servir a du carding/fraude).
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives, réessaie dans quelques minutes.' },
+});
 
 const port = PORT || 4242;
 const domain = DOMAIN || `http://localhost:${port}`;
 const priceInCents = Math.round(parseFloat(PRICE_EUR || '25') * 100);
 const productName = PRODUCT_NAME || "Frais d'inscription";
+
+// ----------------------------------------------------------------------------
+// Determine le "type" de paiement a partir du prefixe de la reference,
+// exactement comme mark_paid.php cote PHP (voir ce fichier), pour savoir
+// quel tarif aller chercher.
+// ----------------------------------------------------------------------------
+function priceTypeForRef(ref) {
+  if (!ref) return 'inscription';
+  if (ref.startsWith('camp-')) return 'camp';
+  if (ref.startsWith('animateur-camp-')) return 'animateur_camp';
+  if (ref.startsWith('animateur-')) return 'animateur';
+  return 'inscription';
+}
+
+// ----------------------------------------------------------------------------
+// Va chercher, cote site Patro (PHP), le prix actuel pour ce type de
+// paiement (modifiable par un admin - voir admin.php, onglet Tarifs).
+// Si le site est injoignable (ou PATRO_SITE_URL non configure, ex: tests
+// locaux isoles), on retombe sur le prix fixe de .env pour ne pas bloquer
+// le paiement.
+// ----------------------------------------------------------------------------
+async function getPriceForRef(ref) {
+  const type = priceTypeForRef(ref);
+  if (PATRO_SITE_URL && PATRO_WEBHOOK_SECRET) {
+    try {
+      const r = await fetch(`${PATRO_SITE_URL}/get_price.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, secret: PATRO_WEBHOOK_SECRET }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (typeof data.price_eur === 'number' && data.price_eur > 0) {
+          return {
+            priceInCents: Math.round(data.price_eur * 100),
+            productName: data.product_name || productName,
+          };
+        }
+      } else {
+        console.error('⚠️  Le site Patro a refusé la demande de tarif :', r.status);
+      }
+    } catch (err) {
+      console.error('⚠️  Impossible de récupérer le tarif depuis le site Patro, utilisation du tarif par défaut :', err.message);
+    }
+  }
+  // Repli : tarif fixe configure dans .env.
+  return { priceInCents, productName };
+}
 
 // ----------------------------------------------------------------------------
 // Previent le site Patro (PHP) qu'une inscription a ete payee. Utilise a la
@@ -146,11 +257,18 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Petite route pour que la page HTML affiche le bon prix et le bon nom
-// sans avoir à les recopier en dur dans le HTML.
-app.get('/config', (req, res) => {
+// sans avoir à les recopier en dur dans le HTML. Le prix depend du type de
+// paiement (voir ?ref=... dans l'URL de la page), determine cote site Patro.
+app.get('/config', async (req, res) => {
+  const ref = typeof req.query.ref === 'string' ? req.query.ref : undefined;
+  const { priceInCents: cents, productName: name } = await getPriceForRef(ref);
   res.json({
-    prixEuros: priceInCents / 100,
-    nomProduit: productName,
+    prixEuros: cents / 100,
+    nomProduit: name,
+    // Utilise par succes.html pour rediriger vers le site Patro (PHP) une
+    // fois le paiement confirme, au lieu de rester sur ce serveur de
+    // paiement (voir PATRO_SITE_URL dans .env).
+    patroSiteUrl: PATRO_SITE_URL || null,
   });
 });
 
@@ -158,11 +276,15 @@ app.get('/config', (req, res) => {
 // Crée une session de paiement Stripe Checkout et renvoie l'URL vers
 // laquelle rediriger la personne pour qu'elle paie.
 // ----------------------------------------------------------------------------
-app.post('/creer-session-paiement', async (req, res) => {
+app.post('/creer-session-paiement', paymentLimiter, async (req, res) => {
   try {
     // "ref" est optionnel : c'est l'identifiant de l'inscription sur le
     // site Patro, transmis pour que le webhook puisse la marquer payee.
     const ref = typeof req.body?.ref === 'string' ? req.body.ref.slice(0, 100) : undefined;
+    // Le prix est toujours determine ici, cote serveur, a partir du type
+    // deduit de la reference - jamais a partir d'une valeur envoyee par le
+    // navigateur, pour ne pas pouvoir etre manipule.
+    const { priceInCents: cents, productName: name } = await getPriceForRef(ref);
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -173,9 +295,9 @@ app.post('/creer-session-paiement', async (req, res) => {
           price_data: {
             currency: 'eur',
             product_data: {
-              name: productName,
+              name,
             },
-            unit_amount: priceInCents,
+            unit_amount: cents,
           },
           quantity: 1,
         },
@@ -196,7 +318,7 @@ app.post('/creer-session-paiement', async (req, res) => {
 // Cree une session de paiement Stripe Checkout pour un DON (montant libre
 // choisi par la personne, independant du prix d'inscription configure).
 // ----------------------------------------------------------------------------
-app.post('/creer-session-don', async (req, res) => {
+app.post('/creer-session-don', paymentLimiter, async (req, res) => {
   try {
     const amountEur = parseFloat(req.body?.amount);
     if (!Number.isFinite(amountEur) || amountEur < 1 || amountEur > 5000) {
