@@ -53,11 +53,16 @@ if (!STRIPE_SECRET_KEY) {
 // jamais retomber correctement sur IPv4, ce qui remonte comme
 // "StripeConnectionError" sans cause precise. On force donc explicitement
 // l'IPv4 sur l'agent HTTPS utilise par Stripe pour contourner ce cas.
+// IMPORTANT : l'agent doit etre passe EN PARAMETRE de
+// createNodeHttpClient() et non via l'option separee "httpAgent" - cette
+// derniere est ignoree des qu'un "httpClient" est fourni explicitement
+// (NodeHttpClient cree alors son propre agent HTTPS par defaut en interne
+// et ne regarde jamais l'option "httpAgent" du tout).
+const stripeHttpsAgent = new https.Agent({ family: 4, keepAlive: true });
 const stripe = Stripe(STRIPE_SECRET_KEY, {
   maxNetworkRetries: 3,
   timeout: 20000,
-  httpClient: Stripe.createNodeHttpClient(),
-  httpAgent: new https.Agent({ family: 4, keepAlive: true }),
+  httpClient: Stripe.createNodeHttpClient(stripeHttpsAgent),
 });
 const app = express();
 
