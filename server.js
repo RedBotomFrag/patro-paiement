@@ -17,7 +17,6 @@
 // ============================================================================
 
 require('dotenv').config();
-const https = require('https');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -41,28 +40,22 @@ if (!STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
-// Sur certains hebergeurs (ex: Render), le client HTTP par defaut de la
-// librairie Stripe (base sur fetch/HTTP2) echoue systematiquement a se
-// connecter ("StripeConnectionError" sans cause precise), meme apres
-// plusieurs tentatives. On force donc le client HTTP "classique" (module
-// Node natif https), plus compatible avec ce genre d'environnement.
-// Meme avec ce client "classique", certains hebergeurs (dont Render, en
-// tout cas sur certaines instances/regions) resolvent api.stripe.com en
-// IPv6 par defaut, alors que leur sortie reseau IPv6 est cassee ou trop
-// lente : la connexion tente IPv6, echoue en silence, puis abandonne sans
-// jamais retomber correctement sur IPv4, ce qui remonte comme
-// "StripeConnectionError" sans cause precise. On force donc explicitement
-// l'IPv4 sur l'agent HTTPS utilise par Stripe pour contourner ce cas.
-// IMPORTANT : l'agent doit etre passe EN PARAMETRE de
-// createNodeHttpClient() et non via l'option separee "httpAgent" - cette
-// derniere est ignoree des qu'un "httpClient" est fourni explicitement
-// (NodeHttpClient cree alors son propre agent HTTPS par defaut en interne
-// et ne regarde jamais l'option "httpAgent" du tout).
-const stripeHttpsAgent = new https.Agent({ family: 4, keepAlive: true });
+// NOTE (diagnostic effectue le 23/09) : le client HTTP "classique" de
+// Stripe (Stripe.createNodeHttpClient(), base sur le module Node natif
+// https, avec une liste de ciphers TLS restreinte codee en dur dans le
+// SDK) echoue systematiquement sur Render avec "StripeConnectionError"
+// sans cause precise - meme en forcant IPv4. Un test direct avec le
+// fetch() natif de Node (route /diag-network) a prouve que la
+// connectivite sortante vers api.stripe.com fonctionne parfaitement
+// depuis cette meme instance (reponse en ~400ms) : le probleme vient donc
+// specifiquement du client "classique" (tres probablement sa liste de
+// ciphers TLS, incompatible avec l'environnement Render), pas du reseau.
+// On utilise donc le client HTTP par defaut du SDK (base sur fetch), qui
+// est demontrablement fonctionnel ici - ne pas le remplacer par
+// createNodeHttpClient() sans revalider via /diag-network au prealable.
 const stripe = Stripe(STRIPE_SECRET_KEY, {
   maxNetworkRetries: 3,
   timeout: 20000,
-  httpClient: Stripe.createNodeHttpClient(stripeHttpsAgent),
 });
 const app = express();
 
@@ -355,37 +348,6 @@ app.post('/creer-session-don', paymentLimiter, async (req, res) => {
     console.error('Erreur création session don Stripe :', err.message);
     res.status(500).json({ error: err.message });
   }
-});
-
-// ----------------------------------------------------------------------------
-// Route de diagnostic TEMPORAIRE : teste la connectivite sortante brute
-// (sans passer par le SDK Stripe) vers plusieurs hotes, pour determiner si
-// le probleme est specifique a Stripe ou si tout le reseau sortant de
-// cette instance est casse. A retirer une fois le probleme identifie.
-// ----------------------------------------------------------------------------
-app.get('/diag-network', async (req, res) => {
-  const targets = [
-    'https://api.stripe.com/v1',
-    'https://patrodestockem.be/',
-    'https://example.com/',
-    'https://1.1.1.1/',
-  ];
-  const results = {};
-  for (const url of targets) {
-    const start = Date.now();
-    try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      results[url] = { ok: true, status: r.status, ms: Date.now() - start };
-    } catch (err) {
-      results[url] = {
-        ok: false,
-        error: err.message,
-        cause: err.cause ? String(err.cause) : undefined,
-        ms: Date.now() - start,
-      };
-    }
-  }
-  res.json(results);
 });
 
 // ----------------------------------------------------------------------------
