@@ -358,6 +358,37 @@ app.post('/creer-session-don', paymentLimiter, async (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
+// Route de diagnostic TEMPORAIRE : teste la connectivite sortante brute
+// (sans passer par le SDK Stripe) vers plusieurs hotes, pour determiner si
+// le probleme est specifique a Stripe ou si tout le reseau sortant de
+// cette instance est casse. A retirer une fois le probleme identifie.
+// ----------------------------------------------------------------------------
+app.get('/diag-network', async (req, res) => {
+  const targets = [
+    'https://api.stripe.com/v1',
+    'https://patrodestockem.be/',
+    'https://example.com/',
+    'https://1.1.1.1/',
+  ];
+  const results = {};
+  for (const url of targets) {
+    const start = Date.now();
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      results[url] = { ok: true, status: r.status, ms: Date.now() - start };
+    } catch (err) {
+      results[url] = {
+        ok: false,
+        error: err.message,
+        cause: err.cause ? String(err.cause) : undefined,
+        ms: Date.now() - start,
+      };
+    }
+  }
+  res.json(results);
+});
+
+// ----------------------------------------------------------------------------
 // Filet de securite pour le developpement local (sans Stripe CLI) : la page
 // succes.html appelle cette route avec le session_id recu de Stripe apres
 // paiement. On revérifie DIRECTEMENT aupres de Stripe (jamais en faisant
