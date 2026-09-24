@@ -87,7 +87,16 @@
     // transmis dans l'URL (ex: ?ref=12 ou ?ref=camp-12) pour relier ce
     // paiement a la bonne inscription une fois confirme par Stripe, et pour
     // determiner le bon tarif (voir /config et /creer-session-paiement).
-    const ref = new URLSearchParams(window.location.search).get('ref');
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    // "auto=1" : le site Patro redirige directement ici (au lieu d'exposer
+    // un lien "Payer" separe) et veut que le paiement demarre tout seul,
+    // sans clic supplementaire - voir inscription-paiement.php cote PHP.
+    // On laisse volontairement l'attente (et le reveil eventuel du serveur,
+    // qui peut prendre jusqu'a ~50s sur le plan gratuit de Render) se faire
+    // ici, cote navigateur, qui n'a pas de limite de temps imposee par
+    // l'hebergement - contrairement a un appel bloquant cote PHP.
+    const auto = params.get('auto') === '1';
 
     // Récupère le prix et le nom configurés côté site Patro (modifiables
     // par un admin) pour ce type de paiement.
@@ -103,7 +112,7 @@
         prixEl.textContent = '—';
       });
 
-    bouton.addEventListener('click', async () => {
+    async function lancerPaiement() {
       bouton.disabled = true;
       bouton.textContent = 'Redirection…';
       erreur.style.display = 'none';
@@ -127,7 +136,13 @@
         bouton.disabled = false;
         bouton.textContent = 'Payer';
       }
-    });
+    }
+
+    bouton.addEventListener('click', lancerPaiement);
+
+    if (auto) {
+      lancerPaiement();
+    }
   </script>
 </body>
 </html>
