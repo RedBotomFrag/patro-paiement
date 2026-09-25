@@ -147,7 +147,7 @@ async function getPriceForRef(ref) {
       const r = await fetch(`${PATRO_SITE_URL}/get_price.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, secret: PATRO_WEBHOOK_SECRET }),
+        body: JSON.stringify({ type, ref, secret: PATRO_WEBHOOK_SECRET }),
       });
       if (r.ok) {
         const data = await r.json();
