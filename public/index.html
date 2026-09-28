@@ -24,6 +24,10 @@
     width: 90%;
     text-align: center;
   }
+  .logo {
+    height: 56px;
+    margin-bottom: 20px;
+  }
   h1 {
     font-size: 22px;
     margin: 0 0 8px;
@@ -65,19 +69,48 @@
     font-size: 12px;
     color: #999;
   }
+
+  /* Ecran de chargement, affiche pendant la preparation automatique du
+     paiement (voir "auto=1" plus bas) - la carte prix/bouton normale reste
+     cachee tant que tout se passe bien, et ne reapparait qu'en cas
+     d'echec (repli manuel). */
+  .chargement { display: none; }
+  .chargement.actif { display: block; }
+  .chargement.actif ~ .contenu-normal { display: none; }
+  .spinner {
+    width: 44px;
+    height: 44px;
+    margin: 4px auto 20px;
+    border: 4px solid #eee;
+    border-top-color: #3f7d3a;
+    border-radius: 50%;
+    animation: tourner 0.8s linear infinite;
+  }
+  @keyframes tourner { to { transform: rotate(360deg); } }
+  .chargement p { color: #666; font-size: 14px; margin: 0; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>Inscription</h1>
-    <p class="desc">Finalise ton inscription en réglant les frais ci-dessous.</p>
-    <div class="prix" id="prix">…</div>
-    <button id="bouton-payer">Payer</button>
-    <div class="erreur" id="erreur">Une erreur est survenue. Réessaie dans un instant.</div>
-    <div class="securise">🔒 Paiement sécurisé par Stripe</div>
+    <img class="logo" src="https://www.patrodestockem.be/build/images/logo.png" alt="Patro de Stockem">
+
+    <div class="chargement" id="chargement">
+      <div class="spinner"></div>
+      <p>Préparation de ton paiement...</p>
+    </div>
+
+    <div class="contenu-normal">
+      <h1>Inscription</h1>
+      <p class="desc">Finalise ton inscription en réglant les frais ci-dessous.</p>
+      <div class="prix" id="prix">…</div>
+      <button id="bouton-payer">Payer</button>
+      <div class="erreur" id="erreur">Une erreur est survenue. Réessaie dans un instant.</div>
+      <div class="securise">🔒 Paiement sécurisé par Stripe</div>
+    </div>
   </div>
 
   <script>
+    const chargement = document.getElementById('chargement');
     const bouton = document.getElementById('bouton-payer');
     const erreur = document.getElementById('erreur');
     const prixEl = document.getElementById('prix');
@@ -95,8 +128,14 @@
     // On laisse volontairement l'attente (et le reveil eventuel du serveur,
     // qui peut prendre jusqu'a ~50s sur le plan gratuit de Render) se faire
     // ici, cote navigateur, qui n'a pas de limite de temps imposee par
-    // l'hebergement - contrairement a un appel bloquant cote PHP.
+    // l'hebergement - contrairement a un appel bloquant cote PHP. Pendant
+    // cette attente, l'ecran de chargement (logo + spinner) reste affiche
+    // a la place du prix/bouton, qui ne sert que si l'auto-demarrage echoue.
     const auto = params.get('auto') === '1';
+
+    if (auto) {
+      chargement.classList.add('actif');
+    }
 
     // Récupère le prix et le nom configurés côté site Patro (modifiables
     // par un admin) pour ce type de paiement.
@@ -132,6 +171,9 @@
         }
       } catch (e) {
         console.error(e);
+        // Echec : on sort de l'ecran de chargement et on revient a la
+        // carte normale (prix + bouton "Payer" cliquable manuellement).
+        chargement.classList.remove('actif');
         erreur.style.display = 'block';
         bouton.disabled = false;
         bouton.textContent = 'Payer';
