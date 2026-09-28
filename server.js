@@ -82,7 +82,10 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:'],
+        // Autorise le logo du site Patro, charge depuis l'autre domaine
+        // (voir public/index.html) - sinon le CSP le bloque silencieusement
+        // (aucune erreur visible, l'image ne s'affiche juste jamais).
+        imgSrc: ["'self'", 'data:', 'https://www.patrodestockem.be'],
         connectSrc: ["'self'"],
         frameAncestors: ["'self'"],
         objectSrc: ["'none'"],
